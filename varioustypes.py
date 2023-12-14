@@ -101,13 +101,14 @@ for i in range(20):
         )
     )
 
-print(generated_centrepoints)
 
+print("fetching water features...\n")
 geodataframe = osmnx.features.features_from_point(
     centrepoints[0],
     water_tags,
     dist=dist
 )
+water_found = [True]
 
 all_points = centrepoints + generated_centrepoints
 for point in all_points[1:]:
@@ -118,14 +119,23 @@ for point in all_points[1:]:
             dist=dist,
             )
         geodataframe = pandas.concat([geodataframe, frame])
+        water_found.append(True)
+        print(f"{len(water_found)}: found water feature near {point}")
     except osmnx.features.InsufficientResponseError:
-        pass
+        water_found.append(False)
+        print(f"{len(water_found)}: water not found near {point}")
 
+print("rendering map")
 m = geodataframe.explore(color="red", tooltip=True, marker_kwds=mk)
 
-for point in all_points:
-    folium.Marker(point).add_to(m)
+print("Adding markers")
+for i in range(len(water_found)):
+    color = "blue"
+    if water_found[i]:
+        color = "red"
+    folium.Marker(all_points[i], icon=folium.Icon(color=color)).add_to(m)
 
+print("saving map")
 m.save("map.html")
 webbrowser.open('file://' + os.path.realpath('map.html'))
 

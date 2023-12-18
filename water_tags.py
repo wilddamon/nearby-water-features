@@ -53,5 +53,3 @@ TAGS = {
     # 'playground': ['splash_pad'],
 }
 
-# Equivalent tags:
-# leisure:swimming_pool and leisure:sports_centre+sport:swimming

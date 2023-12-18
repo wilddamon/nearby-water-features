@@ -1,4 +1,5 @@
 import argparse
+import collections
 import csv
 import os
 import pprint
@@ -12,10 +13,7 @@ import pandas
 import water_tags
 
 def array_to_floats(arr):
-    result = []
-    for n in arr:
-        result.append(pandas.to_numeric(n))
-    return tuple(result)
+    return tuple(pandas.to_numeric(n) for n in arr)
 
 def readfile(path):
     data = []
@@ -78,33 +76,26 @@ def non_null_tags_from_gdf(gdf):
         items_retrieved.append(result)
     return items_retrieved
 
-def accumulate_in_dict(d, key):
-    if not key in d:
-        d[key] = 0
-    d[key] += 1
-
-def accumulate_in_subdict(d, key, subkey):
-    if not key in d:
-        d[key] = {}
-    if not subkey in d[key]:
-        d[key][subkey] = 0
-    d[key][subkey] += 1
-
-def accumulate_stats(tags_arr, results_dict):
+def accumulate_stats(tags_arr, names_counter, place_types_counter, num_places_found_counter):
     for tags_dict in tags_arr:
-        for key in tags_dict.keys():
-            if (key == 'name'):
-                accumulate_in_subdict(results_dict, 'names', tags_dict[key])
+        for key in tags_dict:
+            if key == 'name':
+                names_counter[tags_dict['name']] += 1
+                # Only record names in the names counter
+                continue
+            counter_key = key
+            # Separate private and public items.
+            if key == 'access' or key == 'ownership':
+                # Don't record these as they are appended below.
                 continue
             key_name = f"{key}:{tags_dict[key]}"
-            if key != 'access' and 'access' in tags_dict:
+            if 'access' in tags_dict:
                 key_name = f'{key_name}_{tags_dict["access"]}'
-            if key != 'ownership' and 'ownership' in tags_dict:
+            elif 'ownership' in tags_dict:
                 key_name = f'{key_name}_{tags_dict["ownership"]}'
-            accumulate_in_dict(results_dict, key_name)
+            place_types_counter[key_name] += 1
 
-        num_keys = len(tags_dict.keys())
-        accumulate_in_subdict(results_dict, 'num_items_found', num_keys)
+        num_places_found_counter[len(tags_dict)] += 1
 
 def main():
     if len(sys.argv) < 3:
@@ -139,11 +130,14 @@ def main():
     water_found_points = []
     water_not_found_points = []
     tags_arr = []
-    stats = {}
+    place_types_counter = collections.Counter()
+    place_names_counter = collections.Counter()
+    num_places_found_counter = collections.Counter()
     for latlng in gdfs:
         gdf = gdfs[latlng]
         if gdf is None:
             water_not_found_points.append(latlng)
+            num_places_found_counter[0] += 1
             continue
 
         tags = non_null_tags_from_gdf(gdf)
@@ -153,9 +147,16 @@ def main():
             geodataframe = pandas.concat([geodataframe, gdf])
         water_found_points.append(latlng)
         tags_arr.append(tags)
-        accumulate_stats(tags, stats)
 
-    pprint.pprint(stats)
+        accumulate_stats(
+            tags,
+            place_names_counter,
+            place_types_counter,
+            num_places_found_counter)
+        
+    pprint.pprint(place_types_counter)
+    pprint.pprint(place_names_counter)
+    pprint.pprint(num_places_found_counter)
 
     if args.open:
         m = geodataframe.explore(color="red", tooltip=True)

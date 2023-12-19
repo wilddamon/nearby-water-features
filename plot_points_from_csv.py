@@ -13,14 +13,6 @@ import pandas
 import water_tags
 
 
-def readfile(path):
-    pandas_data = pandas.read_csv(path, header=None)
-    data = []
-    for i in range(len(pandas_data)):
-        data.append((pandas_data[0][i], pandas_data[1][i]))
-    return data
-
-
 def plot_points(data, m, color="", tags=None):
     for i in range(len(data)):
         latlng = data[i]
@@ -98,31 +90,9 @@ def accumulate_stats(
         num_places_found_counter[len(tags_dict)] += 1
 
 
-def main():
-    if len(sys.argv) < 3:
-        raise Exception("Must specify a csv file and radius")
-
-    parser = argparse.ArgumentParser(
-        prog="plot_points_from_csv",
-        description="gets water features from a specified radius around points,"
-        + "and plots them on a map.",
-    )
-    parser.add_argument("filename")
-    parser.add_argument("radius", type=int)
-    parser.add_argument("--limit_points", type=int, required=False)
-    parser.add_argument("--save_path", required=False)
-    parser.add_argument(
-        "--open", required=False, action=argparse.BooleanOptionalAction, default=True
-    )
-    args = parser.parse_args()
-
-    data = readfile(args.filename)
-
-    if args.limit_points and len(data) > args.limit_points:
-        data = data[: args.limit_points]
-
+def run(data, radius, save_path=None, open_in_browser=False):
     print(f"Finding water near {len(data)} points")
-    gdfs = find_water_near_points(data, args.radius)
+    gdfs = find_water_near_points(data, radius)
 
     geodataframe = None
     water_found_points = []
@@ -152,25 +122,80 @@ def main():
             )
 
     print(f"Found water near {len(water_found_points)} of {len(data)}")
-    print(len(water_not_found_points) + len(water_found_points))
     pprint.pprint(place_types_counter)
     pprint.pprint(place_names_counter)
     pprint.pprint(num_places_found_counter)
 
-    if args.open:
+    if open_in_browser:
         m = geodataframe.explore(color="red", tooltip=True)
 
         plot_points(water_found_points, m, "red", tags_arr)
         plot_points(water_not_found_points, m, "blue")
 
-    if args.save_path:
-        save_path = os.path.realpath(args.save_path)
+    if save_path:
+        save_path = os.path.realpath(save_path)
         print(f"saving to {save_path}")
         m.save(save_path)
-        if args.open:
+        if open_in_browser:
             webbrowser.open("file://" + save_path)
-    elif args.open:
+    elif open_in_browser:
         m.show_in_browser()
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        prog="plot_points_from_csv",
+        description="gets water features from a specified radius around points,"
+        + "and plots them on a map.",
+    )
+    parser.add_argument("filename")
+    parser.add_argument("radius", type=int)
+    parser.add_argument("--limit_points", type=int, required=False)
+    parser.add_argument("--save_path", required=False)
+    parser.add_argument(
+        "--open", required=False, action=argparse.BooleanOptionalAction, default=True
+    )
+    parser.add_argument("--latitude_colname", required=False)
+    parser.add_argument("--longitude_colname", required=False)
+    parser.add_argument(
+        "--has_header",
+        required=False,
+        action=argparse.BooleanOptionalAction,
+        default=False,
+    )
+    args = parser.parse_args()
+    if (args.latitude_colname and args.longitude_colname is None) or (
+        args.longitude_colname and args.latitude_colname is None
+    ):
+        parser.error(
+            "If either latitude_colname or longitude_colname is specified,"
+            + " the other must be too."
+        )
+
+    header = "infer" if args.has_header else None
+    if args.latitude_colname:
+        pandas_data = pandas.read_csv(
+            args.filename,
+            usecols=[args.latitude_colname, args.longitude_colname],
+            header=header,
+        )
+    else:
+        pandas_data = pandas.read_csv(args.filename, header=header)
+
+    data = []
+    end_index = len(pandas_data)
+    if args.limit_points and args.limit_points < len(pandas_data):
+        end_index = args.limit_points
+
+    lat_key = args.latitude_colname if args.latitude_colname else 0
+    lng_key = args.longitude_colname if args.longitude_colname else 1
+    for i in range(end_index):
+        # Exclude if missing latlng
+        if pandas.isna(pandas_data[lat_key][i]) or pandas.isna(pandas_data[lng_key][i]):
+            continue
+        data.append((pandas_data[lat_key][i], pandas_data[lng_key][i]))
+
+    run(data, args.radius, save_path=args.save_path, open_in_browser=args.open)
 
 
 if __name__ == "__main__":

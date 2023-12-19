@@ -12,16 +12,15 @@ import pandas
 
 import water_tags
 
-def array_to_floats(arr):
-    return tuple(pandas.to_numeric(n) for n in arr)
 
 def readfile(path):
+    pandas_data = pandas.read_csv(path, header=None)
     data = []
-    with open(path, newline='', mode='r', encoding='utf-8-sig') as csvfile:
-        rdr = csv.reader(csvfile)
-        for row in rdr:
-            data.append(array_to_floats(row))
+    for i in range(len(pandas_data)):
+        data.append((pandas_data[0][i], pandas_data[1][i]))
+    pprint.pprint(data)
     return data
+
 
 def plot_points(data, m, color="", tags=None):
     for i in range(len(data)):
@@ -29,12 +28,8 @@ def plot_points(data, m, color="", tags=None):
         popup = ""
         if tags is not None:
             popup = f"{tags[i]}"
-        folium.Marker(
-                latlng,
-                icon=folium.Icon(color=color),
-                popup=popup
-                ).add_to(m)
-        
+        folium.Marker(latlng, icon=folium.Icon(color=color), popup=popup).add_to(m)
+
 
 def find_water_near_point(latlng, radius):
     try:
@@ -46,18 +41,21 @@ def find_water_near_point(latlng, radius):
     except osmnx.features.InsufficientResponseError:
         return None
 
+
 def find_water_near_points(data, radius):
     gdfs = {}
     for i in range(len(data)):
         if i > 0 and i % 10 == 0:
-            print(f'Checked {i} points')
+            print(f"Checked {i} points")
         latlng = data[i]
         gdfs[latlng] = find_water_near_point(latlng, radius)
     return gdfs
 
+
 def retrieve_value_from_gdf_row(row, tag, result_dict):
     if tag in row and not pandas.isna(row[tag]):
         result_dict[tag] = row[tag]
+
 
 def non_null_tags_from_gdf(gdf):
     items_retrieved = []
@@ -67,60 +65,62 @@ def non_null_tags_from_gdf(gdf):
         result = {}
         for tag in water_tags.TAGS:
             retrieve_value_from_gdf_row(row, tag, result)
-        retrieve_value_from_gdf_row(row, 'name', result)
-        retrieve_value_from_gdf_row(row, 'access', result)
-        retrieve_value_from_gdf_row(row, 'ownership', result)
-        retrieve_value_from_gdf_row(row, 'depth', result)
-        retrieve_value_from_gdf_row(row, 'lifeguard', result)
+        retrieve_value_from_gdf_row(row, "name", result)
+        retrieve_value_from_gdf_row(row, "access", result)
+        retrieve_value_from_gdf_row(row, "ownership", result)
+        retrieve_value_from_gdf_row(row, "depth", result)
+        retrieve_value_from_gdf_row(row, "lifeguard", result)
 
         items_retrieved.append(result)
     return items_retrieved
 
-def accumulate_stats(tags_arr, names_counter, place_types_counter, num_places_found_counter):
+
+def accumulate_stats(
+    tags_arr, names_counter, place_types_counter, num_places_found_counter
+):
     for tags_dict in tags_arr:
         for key in tags_dict:
-            if key == 'name':
-                names_counter[tags_dict['name']] += 1
+            if key == "name":
+                names_counter[tags_dict["name"]] += 1
                 # Only record names in the names counter
                 continue
             counter_key = key
             # Separate private and public items.
-            if key == 'access' or key == 'ownership':
+            if key == "access" or key == "ownership":
                 # Don't record these as they are appended below.
                 continue
             key_name = f"{key}:{tags_dict[key]}"
-            if 'access' in tags_dict:
+            if "access" in tags_dict:
                 key_name = f'{key_name}_{tags_dict["access"]}'
-            elif 'ownership' in tags_dict:
+            elif "ownership" in tags_dict:
                 key_name = f'{key_name}_{tags_dict["ownership"]}'
             place_types_counter[key_name] += 1
 
         num_places_found_counter[len(tags_dict)] += 1
+
 
 def main():
     if len(sys.argv) < 3:
         raise Exception("Must specify a csv file and radius")
 
     parser = argparse.ArgumentParser(
-        prog='plot_points_from_csv',
-        description='gets water features from a specified radius around points,' +
-            'and plots them on a map.',
-        )
-    parser.add_argument('filename')
-    parser.add_argument('radius', type=int)
-    parser.add_argument('--limit_points', type=int, required=False)
-    parser.add_argument('--save_path', required=False)
+        prog="plot_points_from_csv",
+        description="gets water features from a specified radius around points,"
+        + "and plots them on a map.",
+    )
+    parser.add_argument("filename")
+    parser.add_argument("radius", type=int)
+    parser.add_argument("--limit_points", type=int, required=False)
+    parser.add_argument("--save_path", required=False)
     parser.add_argument(
-        '--open',
-        required=False,
-        action=argparse.BooleanOptionalAction,
-        default=True)
+        "--open", required=False, action=argparse.BooleanOptionalAction, default=True
+    )
     args = parser.parse_args()
 
     data = readfile(args.filename)
 
     if args.limit_points and len(data) > args.limit_points:
-        data = data[:args.limit_points]
+        data = data[: args.limit_points]
 
     print(f"Finding water near {len(data)} points")
     gdfs = find_water_near_points(data, args.radius)
@@ -149,11 +149,9 @@ def main():
         tags_arr.append(tags)
 
         accumulate_stats(
-            tags,
-            place_names_counter,
-            place_types_counter,
-            num_places_found_counter)
-        
+            tags, place_names_counter, place_types_counter, num_places_found_counter
+        )
+
     pprint.pprint(place_types_counter)
     pprint.pprint(place_names_counter)
     pprint.pprint(num_places_found_counter)
@@ -169,11 +167,10 @@ def main():
         print(f"saving to {save_path}")
         m.save(save_path)
         if args.open:
-            webbrowser.open('file://' + save_path)
+            webbrowser.open("file://" + save_path)
     elif args.open:
         m.show_in_browser()
 
 
-
-if __name__ == '__main__':
+if __name__ == "__main__":
     sys.exit(main())

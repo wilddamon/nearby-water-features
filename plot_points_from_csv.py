@@ -18,7 +18,6 @@ def readfile(path):
     data = []
     for i in range(len(pandas_data)):
         data.append((pandas_data[0][i], pandas_data[1][i]))
-    pprint.pprint(data)
     return data
 
 
@@ -43,12 +42,12 @@ def find_water_near_point(latlng, radius):
 
 
 def find_water_near_points(data, radius):
-    gdfs = {}
+    gdfs = collections.defaultdict(list)
     for i in range(len(data)):
         if i > 0 and i % 10 == 0:
             print(f"Checked {i} points")
         latlng = data[i]
-        gdfs[latlng] = find_water_near_point(latlng, radius)
+        gdfs[latlng].append(find_water_near_point(latlng, radius))
     return gdfs
 
 
@@ -124,7 +123,6 @@ def main():
 
     print(f"Finding water near {len(data)} points")
     gdfs = find_water_near_points(data, args.radius)
-    print(f"Found water near {len(gdfs.keys())} of {len(data)}")
 
     geodataframe = None
     water_found_points = []
@@ -134,24 +132,27 @@ def main():
     place_names_counter = collections.Counter()
     num_places_found_counter = collections.Counter()
     for latlng in gdfs:
-        gdf = gdfs[latlng]
-        if gdf is None:
-            water_not_found_points.append(latlng)
-            num_places_found_counter[0] += 1
-            continue
+        gdf_arr = gdfs[latlng]
+        for gdf in gdf_arr:
+            if gdf is None:
+                water_not_found_points.append(latlng)
+                num_places_found_counter[0] += 1
+                continue
 
-        tags = non_null_tags_from_gdf(gdf)
-        if geodataframe is None:
-            geodataframe = gdf
-        else:
-            geodataframe = pandas.concat([geodataframe, gdf])
-        water_found_points.append(latlng)
-        tags_arr.append(tags)
+            tags = non_null_tags_from_gdf(gdf)
+            if geodataframe is None:
+                geodataframe = gdf
+            else:
+                geodataframe = pandas.concat([geodataframe, gdf])
+            water_found_points.append(latlng)
+            tags_arr.append(tags)
 
-        accumulate_stats(
-            tags, place_names_counter, place_types_counter, num_places_found_counter
-        )
+            accumulate_stats(
+                tags, place_names_counter, place_types_counter, num_places_found_counter
+            )
 
+    print(f"Found water near {len(water_found_points)} of {len(data)}")
+    print(len(water_not_found_points) + len(water_found_points))
     pprint.pprint(place_types_counter)
     pprint.pprint(place_names_counter)
     pprint.pprint(num_places_found_counter)

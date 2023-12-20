@@ -1,9 +1,11 @@
 import argparse
 import collections
 import csv
+import datetime
 import os
-import pprint
 import sys
+import tabulate
+import urllib.parse
 import webbrowser
 
 import folium
@@ -16,9 +18,9 @@ import water_tags
 def plot_points(data, m, color="", tags=None):
     for i in range(len(data)):
         latlng = data[i]
-        popup = ""
+        popup = f"{latlng}"
         if tags is not None:
-            popup = f"{tags[i]}"
+            popup += f"\n{tags[i]}"
         folium.Marker(latlng, icon=folium.Icon(color=color), popup=popup).add_to(m)
 
 
@@ -63,7 +65,8 @@ def non_null_tags_from_gdf(gdf):
         retrieve_value_from_gdf_row(row, "lifeguard", result)
 
         items_retrieved.append(result)
-    return items_retrieved
+    # Remove identical items
+    return [dict(t) for t in {tuple(d.items()) for d in items_retrieved}]
 
 
 def accumulate_stats(
@@ -87,10 +90,10 @@ def accumulate_stats(
                 key_name = f'{key_name}_{tags_dict["ownership"]}'
             place_types_counter[key_name] += 1
 
-        num_places_found_counter[len(tags_dict)] += 1
+    num_places_found_counter[len(tags_dict)] += 1
 
 
-def run(data, radius, save_path=None, open_in_browser=False):
+def run(data, radius, num_missing, output_dir=None, open_in_browser=False):
     print(f"Finding water near {len(data)} points")
     gdfs = find_water_near_points(data, radius)
 
@@ -121,25 +124,56 @@ def run(data, radius, save_path=None, open_in_browser=False):
                 tags, place_names_counter, place_types_counter, num_places_found_counter
             )
 
-    print(f"Found water near {len(water_found_points)} of {len(data)}")
-    pprint.pprint(place_types_counter)
-    pprint.pprint(place_names_counter)
-    pprint.pprint(num_places_found_counter)
+    outstring = f"Found water near {len(water_found_points)} of {len(data)}\n"
+    outstring += f"Lat/lng was missing for {num_missing} rows\n"
+    outstring += (
+        tabulate.tabulate(
+            sorted(place_types_counter.items(), key=lambda item: item[1]),
+            headers=["Place type", "Count"],
+        )
+        + "\n\n"
+    )
+    outstring += (
+        tabulate.tabulate(
+            sorted(place_names_counter.items(), key=lambda item: item[1]),
+            headers=["Place name", "Count"],
+        )
+        + "\n\n"
+    )
+    outstring += (
+        tabulate.tabulate(
+            sorted(num_places_found_counter.items(), key=lambda item: item[1]),
+            headers=["Number of places found", "Count"],
+        )
+        + "\n\n"
+    )
+    print(outstring)
 
     if open_in_browser:
         m = geodataframe.explore(color="red", tooltip=True)
 
         plot_points(water_found_points, m, "red", tags_arr)
         plot_points(water_not_found_points, m, "blue")
+        if output_dir is None:
+            m.show_in_browser()
 
-    if save_path:
-        save_path = os.path.realpath(save_path)
-        print(f"saving to {save_path}")
-        m.save(save_path)
+    if output_dir:
+        dt = datetime.datetime.now()
+        filename_notype = os.path.realpath(
+            output_dir + f"water-near-points-{dt.strftime('%Y-%m-%dT%H-%M')}"
+        )
+        output_file = filename_notype + ".txt"
+        print(f"saving output to {output_file}")
+        with open(output_file, "a") as outfile:
+            outfile.write(outstring)
+
+        map_path = filename_notype + ".html"
+        print(f"saving to {map_path}")
+        m.save(map_path)
         if open_in_browser:
-            webbrowser.open("file://" + save_path)
-    elif open_in_browser:
-        m.show_in_browser()
+            url = urllib.parse.quote(map_path)
+            print(f"opening {url}")
+            webbrowser.open("file://" + url)
 
 
 def main():
@@ -151,7 +185,7 @@ def main():
     parser.add_argument("filename")
     parser.add_argument("radius", type=int)
     parser.add_argument("--limit_points", type=int, required=False)
-    parser.add_argument("--save_path", required=False)
+    parser.add_argument("--output_dir", required=False)
     parser.add_argument(
         "--open", required=False, action=argparse.BooleanOptionalAction, default=True
     )
@@ -189,13 +223,22 @@ def main():
 
     lat_key = args.latitude_colname if args.latitude_colname else 0
     lng_key = args.longitude_colname if args.longitude_colname else 1
+    num_missing = 0
     for i in range(end_index):
         # Exclude if missing latlng
         if pandas.isna(pandas_data[lat_key][i]) or pandas.isna(pandas_data[lng_key][i]):
+            num_missing += 1
             continue
         data.append((pandas_data[lat_key][i], pandas_data[lng_key][i]))
 
-    run(data, args.radius, save_path=args.save_path, open_in_browser=args.open)
+    print(f"Mising: {num_missing}")
+    run(
+        data,
+        args.radius,
+        num_missing,
+        output_dir=args.output_dir,
+        open_in_browser=args.open,
+    )
 
 
 if __name__ == "__main__":

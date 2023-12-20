@@ -15,6 +15,11 @@ import pandas
 import water_tags
 
 
+# TODO: Dedupe beach/coastline combos
+# TODO: Increase radius for non-metro locs
+# TODO: Output in a way that is analysable for the whole dataset (not just visualisation)
+
+
 def plot_points(data, m, color="", tags=None):
     for i in range(len(data)):
         latlng = data[i]
@@ -128,21 +133,21 @@ def run(data, radius, num_missing, output_dir=None, open_in_browser=False):
     outstring += f"Lat/lng was missing for {num_missing} rows\n"
     outstring += (
         tabulate.tabulate(
-            sorted(place_types_counter.items(), key=lambda item: item[1]),
+            sorted(place_types_counter.items(), key=lambda item: item[1], reverse=True),
             headers=["Place type", "Count"],
         )
         + "\n\n"
     )
     outstring += (
         tabulate.tabulate(
-            sorted(place_names_counter.items(), key=lambda item: item[1]),
+            sorted(place_names_counter.items(), key=lambda item: item[1], reverse=True),
             headers=["Place name", "Count"],
         )
         + "\n\n"
     )
     outstring += (
         tabulate.tabulate(
-            sorted(num_places_found_counter.items(), key=lambda item: item[1]),
+            sorted(num_places_found_counter.items(), key=lambda item: item[0]),
             headers=["Number of places found", "Count"],
         )
         + "\n\n"
